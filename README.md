@@ -5,6 +5,10 @@ contribution graph de un usuario de GitHub en una escena pixel donde criaturitas
 (slime, gato, fantasma) van saltando de cuadrado en cuadrado según la actividad
 real de commits.
 
+> Este es el README **técnico** (arquitectura, seguridad, deploy). Si buscás
+> una guía de instalación en criollo sin usar la terminal, es
+> [`INSTALACION.md`](./INSTALACION.md). Licencia: [MIT](./LICENSE).
+
 ## Cómo funciona
 
 - **Datos**: GitHub no expone una API pública sin auth para el contribution
@@ -83,15 +87,42 @@ Después abrir `http://localhost:8000?user=TU_USUARIO`.
 1. Importar el repo en Vercel.
 2. Framework preset: "Other" / static — no hay comando de build ni output
    directory especial (se sirve el root tal cual).
+3. [`vercel.json`](./vercel.json) ya incluye los headers de seguridad
+   (CSP, `X-Frame-Options`, `Referrer-Policy`, etc.) — no hace falta
+   configurar nada extra.
 
 ## Seguridad
 
 - Cero backend propio: todo corre en el navegador de quien visita la página.
+  No hay servidor, base de datos ni sesión que atacar.
 - La única API externa usada es de solo lectura, pública, sin token/key
   expuesto en el cliente (no hace falta ninguno).
+- Cero dependencias de terceros cargadas en runtime (no hay CDN de JS/CSS,
+  no hay `npm install` en el bundle final) — elimina el vector de supply
+  chain más común en este tipo de proyectos.
 - CSP en el `<meta>` de `index.html` restringe `connect-src` únicamente al
-  dominio de la API de contribuciones y bloquea scripts/estilos que no sean
-  del propio origen.
+  dominio de la API de contribuciones, y bloquea scripts/estilos inline y de
+  cualquier origen que no sea el propio (`script-src 'self'`, sin
+  `unsafe-inline` ni `unsafe-eval`).
+
+### Revisión OWASP (client-side, sin backend)
+
+La mayoría de las categorías clásicas del OWASP Top 10 no aplican porque no
+hay servidor, base de datos ni autenticación propios (inyección SQL, broken
+auth, SSRF, etc. quedan fuera de alcance). Lo que sí se revisó y se
+endureció, pensando en A03 (Injection/XSS), A05 (Security Misconfiguration)
+y A08 (Software and Data Integrity Failures):
+
+| Riesgo | Estado | Mitigación |
+|---|---|---|
+| XSS reflejado vía `?user=` o input | Cubierto | El username se valida contra un whitelist (`/^[a-zA-Z0-9][a-zA-Z0-9-]*$/`) antes de usarse, y todo texto dinámico se inserta con `textContent`/`.value`, nunca `innerHTML` con datos externos (los únicos `innerHTML` usados interpolan solo números ya calculados por la propia app). |
+| Inyección de host/SSRF vía username manipulado | Cubierto | El username solo se concatena como *path segment* (`encodeURIComponent`) sobre un `API_BASE` hardcodeado con esquema `https://` fijo — no hay forma de que el input cambie el host o el protocolo de la request. |
+| Datos externos (API de terceros / localStorage) sin validar tipos | Corregido en esta revisión | `normalizeContributions()` en `app.js` filtra entradas con fecha no-ISO y coacciona `count`/`level` a números en rango válido antes de usarlos, así un valor corrupto no genera un total con concatenación de strings ni rompe el layout de la grilla (NaN). |
+| Filtración de la URL (con el username) al dominio de terceros vía `Referer` | Corregido en esta revisión | `<meta name="referrer" content="strict-origin-when-cross-origin">` en `index.html`. |
+| Clickjacking (falta `frame-ancestors`/`X-Frame-Options`) | Mitigado donde el hosting lo permite | `<meta http-equiv="Content-Security-Policy">` no puede llevar `frame-ancestors` (limitación del spec, no de esta app). Para Vercel se agregó [`vercel.json`](./vercel.json) con `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` y `Permissions-Policy` restrictiva a nivel de header HTTP real. GitHub Pages no soporta headers custom, así que en ese hosting queda como riesgo residual — bajo impacto porque la página no tiene acciones destructivas ni de escritura que un clickjack pueda explotar. |
+| Reverse tabnabbing (`target="_blank"` sin `rel="noopener"`) | No aplica | La página no tiene links `<a>` salientes. |
+| Secretos/tokens expuestos en el cliente | No aplica | La API usada no requiere key; no hay ningún secreto en el bundle. |
+| Datos sensibles en `localStorage` | Bajo riesgo aceptado | Solo se cachea el contribution graph público de un usuario (no es información sensible ni privada). |
 
 ## Límites conocidos
 

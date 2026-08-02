@@ -214,6 +214,32 @@ async function fetchContributions(username) {
   }
 }
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Los datos vienen de una API de terceros (y a veces de localStorage, que
+ * cualquier script del mismo origen podria haber escrito). Nunca se confia
+ * en su forma: se filtra/coerciona antes de usarlos en la grilla o en sumas,
+ * asi un date/count/level invalido no puede romper el layout ni "envenenar"
+ * silenciosamente el total mostrado (p.ej. concatenacion de strings si
+ * count llegara como texto).
+ */
+function normalizeContributions(raw) {
+  if (!raw || !Array.isArray(raw.contributions)) return { contributions: [] };
+  const contributions = raw.contributions
+    .filter((d) => d && typeof d.date === "string" && ISO_DATE_RE.test(d.date))
+    .map((d) => {
+      const count = Number(d.count);
+      const level = Number(d.level);
+      return {
+        date: d.date,
+        count: Number.isFinite(count) && count > 0 ? Math.floor(count) : 0,
+        level: Number.isFinite(level) ? Math.min(4, Math.max(0, Math.round(level))) : 0,
+      };
+    });
+  return { contributions };
+}
+
 /* ------------------------------------------------------------------ *
  * grilla (52 semanas x 7 dias, layout tipo GitHub)
  * ------------------------------------------------------------------ */
@@ -560,7 +586,7 @@ async function loadUser(rawUsername) {
   try {
     const { data, fromCache, stale } = await fetchContributions(username);
     state.username = username;
-    state.apiData = data;
+    state.apiData = normalizeContributions(data);
     state.viewMode = "quarter";
 
     el.input.value = username;
