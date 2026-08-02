@@ -208,7 +208,7 @@ Cada fase es un commit separado y reversible:
 ## Checklist resumen
 
 - [ ] **Vos:** desplegar `test` en Cloudflare Workers, pasar la URL
-- [ ] **Yo:** vendorizar `pixel-activity-scene` (Fase 1)
+- [x] **Yo:** vendorizar `pixel-activity-scene` (Fase 1)
 - [ ] **Yo:** migrar fetch/normalize a `test`, actualizar CSP y `vercel.json` (Fase 2)
 - [ ] **Vos:** revisar visualmente Fase 2, aprobar
 - [ ] **Yo:** modo custom `multi-jump` + audio enganchado + migración de `app.js` (Fase 3)
