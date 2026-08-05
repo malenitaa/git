@@ -1,6 +1,15 @@
 "use strict";
 
 /* ------------------------------------------------------------------ *
+ * anti-clickjacking: en GitHub Pages no hay forma de mandar el header
+ * X-Frame-Options/frame-ancestors (Pages no soporta headers custom), asi
+ * que este guard cubre ese caso puntual. En Vercel ya lo hace vercel.json.
+ * ------------------------------------------------------------------ */
+if (window.top !== window.self) {
+  window.top.location = window.self.location;
+}
+
+/* ------------------------------------------------------------------ *
  * config
  * ------------------------------------------------------------------ */
 
@@ -186,9 +195,12 @@ async function fetchContributions(username) {
     return { data: cached.data, fromCache: true, stale: false };
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
   try {
     const res = await fetch(API_BASE + encodeURIComponent(username) + "?y=last", {
       headers: { Accept: "application/json" },
+      signal: controller.signal,
     });
     if (res.status === 404) {
       throw new Error("not_found");
@@ -210,7 +222,12 @@ async function fetchContributions(username) {
       // fuente caida pero hay algo viejo en cache: mejor mostrar eso que nada
       return { data: cached.data, fromCache: true, stale: true };
     }
+    if (err.name === "AbortError") {
+      throw new Error("timeout");
+    }
     throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -224,10 +241,19 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
  * silenciosamente el total mostrado (p.ej. concatenacion de strings si
  * count llegara como texto).
  */
+const TEN_YEARS_MS = 10 * 365 * 24 * 60 * 60 * 1000;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
 function normalizeContributions(raw) {
   if (!raw || !Array.isArray(raw.contributions)) return { contributions: [] };
+  const now = Date.now();
   const contributions = raw.contributions
-    .filter((d) => d && typeof d.date === "string" && ISO_DATE_RE.test(d.date))
+    .filter((d) => {
+      if (!d || typeof d.date !== "string" || !ISO_DATE_RE.test(d.date)) return false;
+      const t = parseLocalDate(d.date).getTime();
+      if (Number.isNaN(t)) return false; // fecha con forma ISO pero invalida (ej. mes 13)
+      return t <= now + ONE_DAY_MS && t >= now - TEN_YEARS_MS;
+    })
     .map((d) => {
       const count = Number(d.count);
       const level = Number(d.level);
@@ -294,7 +320,7 @@ function cellCenter(layout, week, day) {
   };
 }
 
-const MONTH_NAMES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const MONTH_NAMES = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 /* ------------------------------------------------------------------ *
  * audio: "boing" pixel corto, sintetizado (sin assets)
@@ -333,6 +359,14 @@ class Boinger {
     osc.connect(gain).connect(ctx.destination);
     osc.start(now);
     osc.stop(now + 0.14);
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        gain.disconnect();
+      } catch (_) {
+        /* ya desconectado */
+      }
+    };
   }
 }
 
@@ -357,7 +391,7 @@ class Creature {
   buildSegments(stops, layout) {
     if (stops.length < 2) {
       return stops.length === 1
-        ? [{ from: stops[0], to: stops[0], steps: MIN_STEPS, arcHeight: 4 }]
+        ? [{ from: stops[0], to: stops[0], steps: MIN_STEPS, arcHeight: 5 + stops[0].level * 4 }]
         : [];
     }
     const segments = [];
@@ -498,15 +532,21 @@ function rebuildScene() {
   }
 
   const total = days.reduce((sum, d) => sum + d.count, 0);
-  const rangeLabel = state.viewMode === "quarter" ? "el ultimo trimestre" : "el ultimo año";
+  const rangeLabel = state.viewMode === "quarter" ? "the last quarter" : "the last year";
   if (activeDays.length === 0) {
-    el.summary.innerHTML = `sin commits en ${rangeLabel}. las criaturas estan durmiendo <span aria-hidden="true">zzz</span>`;
+    el.summary.innerHTML = `no commits in ${rangeLabel}. the creatures are sleeping <span aria-hidden="true">zzz</span>`;
   } else {
-    el.summary.innerHTML = `<strong>${total}</strong> contribuciones en ${rangeLabel} · <strong>${activeDays.length}</strong> dias activos · <strong>${numCreatures}</strong> criatura${numCreatures > 1 ? "s" : ""} saltando`;
+    el.summary.innerHTML = `<strong>${total}</strong> contributions in ${rangeLabel} · <strong>${activeDays.length}</strong> active days · <strong>${numCreatures}</strong> creature${numCreatures > 1 ? "s" : ""} hopping`;
   }
 
   el.rangeToggle.hidden = false;
-  el.rangeToggle.textContent = state.viewMode === "quarter" ? "ver año completo" : "ver ultimo trimestre";
+  el.rangeToggle.textContent = state.viewMode === "quarter" ? "view full year" : "view last quarter";
+
+  // pinta de inmediato: el loop de animacion solo redibuja en cada tick
+  // (TICK_MS), asi que sin esto quedaria un frame en blanco/viejo hasta
+  // el proximo tick.
+  drawGrid();
+  drawCreatures();
 }
 
 function drawGrid() {
@@ -554,9 +594,9 @@ function animationFrame(ts) {
   if (elapsed >= TICK_MS) {
     state.lastTick = ts;
     state.creatures.forEach((c) => c.tick());
+    drawGrid();
+    drawCreatures();
   }
-  drawGrid();
-  drawCreatures();
   state.rafId = requestAnimationFrame(animationFrame);
 }
 
@@ -573,7 +613,7 @@ function startAnimation() {
 async function loadUser(rawUsername) {
   const username = sanitizeUsername(rawUsername);
   if (!USERNAME_RE.test(username)) {
-    setStatus("ese no parece un usuario de github valido.", true);
+    setStatus("that doesn't look like a valid github username.", true);
     return;
   }
 
@@ -581,7 +621,7 @@ async function loadUser(rawUsername) {
   el.stageWrap.hidden = true;
   el.shareBtn.hidden = true;
   el.rangeToggle.hidden = true;
-  setStatus(`cargando contribuciones de @${username}...`);
+  setStatus(`loading contributions for @${username}...`);
 
   try {
     const { data, fromCache, stale } = await fetchContributions(username);
@@ -599,9 +639,9 @@ async function loadUser(rawUsername) {
     el.shareBtn.hidden = false;
 
     if (stale) {
-      setStatus(`no se pudo actualizar desde la API — mostrando datos en cache (@${username}).`);
+      setStatus(`could not refresh from the API — showing cached data (@${username}).`);
     } else if (fromCache) {
-      setStatus(`@${username} (datos en cache local)`);
+      setStatus(`@${username} (local cached data)`);
     } else {
       setStatus(`@${username}`);
     }
@@ -611,9 +651,11 @@ async function loadUser(rawUsername) {
     el.stageWrap.hidden = true;
     el.emptyHint.hidden = false;
     if (err.message === "not_found") {
-      setStatus(`no se encontro a @${username} (o no tiene actividad publica).`, true);
+      setStatus(`could not find @${username} (or they have no public activity).`, true);
+    } else if (err.message === "timeout") {
+      setStatus("the data source took too long to respond. please try again.", true);
     } else {
-      setStatus("no se pudo cargar la actividad ahora mismo. intenta de nuevo en un rato.", true);
+      setStatus("could not load activity right now. please try again in a bit.", true);
     }
   }
 }
@@ -646,9 +688,9 @@ el.shareBtn.addEventListener("click", async () => {
   const shareUrl = url.toString();
   try {
     await navigator.clipboard.writeText(shareUrl);
-    setStatus("¡link copiado al portapapeles!");
+    setStatus("link copied to clipboard!");
   } catch (_) {
-    window.prompt("copia el link:", shareUrl);
+    window.prompt("copy this link:", shareUrl);
   }
 });
 

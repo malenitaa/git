@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -16,28 +16,28 @@
   <h1 class="logo">contribution&nbsp;creatures<span class="blink">_</span></h1>
 
   <form id="user-form" class="user-form" autocomplete="off">
-    <label for="username-input" class="sr-only">usuario de GitHub</label>
+    <label for="username-input" class="sr-only">GitHub username</label>
     <span class="input-prefix">@</span>
     <input
       id="username-input"
       name="user"
       type="text"
-      placeholder="ingresá tu usuario de github"
+      placeholder="enter your github username"
       maxlength="39"
       spellcheck="false"
       autocapitalize="off"
     />
-    <button type="submit" class="btn btn-primary" id="load-btn">cargar</button>
+    <button type="submit" class="btn btn-primary" id="load-btn">load</button>
   </form>
 
   <div class="topbar-actions">
-    <button type="button" id="range-toggle" class="btn btn-ghost" title="cambiar rango" hidden>
-      último trimestre
+    <button type="button" id="range-toggle" class="btn btn-ghost" title="change range" hidden>
+      last quarter
     </button>
-    <button type="button" id="mute-btn" class="btn btn-icon" title="silenciar" aria-pressed="false">
+    <button type="button" id="mute-btn" class="btn btn-icon" title="mute" aria-pressed="false">
       🔊
     </button>
-    <button type="button" id="share-btn" class="btn btn-icon" title="copiar link" hidden>
+    <button type="button" id="share-btn" class="btn btn-icon" title="copy link" hidden>
       🔗
     </button>
   </div>
@@ -49,21 +49,21 @@
   <div id="stage-wrap" class="stage-wrap" hidden>
     <canvas id="scene" width="900" height="260"></canvas>
     <div id="legend" class="legend">
-      <span>menos</span>
+      <span>less</span>
       <i class="sw sw-0"></i><i class="sw sw-1"></i><i class="sw sw-2"></i><i class="sw sw-3"></i><i class="sw sw-4"></i>
-      <span>más</span>
+      <span>more</span>
     </div>
     <div id="summary" class="summary"></div>
   </div>
 
   <div id="empty-hint" class="empty-hint">
-    <p>ingresá un usuario de GitHub para ver sus criaturas saltando por el mapa de contribuciones.</p>
-    <p class="hint-small">ej: <button type="button" class="link-btn" data-demo="torvalds">torvalds</button></p>
+    <p>enter a GitHub username to see their creatures hopping across the contribution map.</p>
+    <p class="hint-small">e.g.: <button type="button" class="link-btn" data-demo="torvalds">torvalds</button></p>
   </div>
 </main>
 
 <footer class="footer">
-  <span>datos vía <code>github-contributions-api.jogruber.de</code> · sin backend propio · cacheado local</span>
+  <span>data via <code>github-contributions-api.jogruber.de</code> · no backend of its own · cached locally</span>
 </footer>
 
 <script src="app.js"></script>
